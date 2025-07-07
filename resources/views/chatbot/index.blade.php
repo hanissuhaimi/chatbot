@@ -29,7 +29,7 @@
             </button>
         </div>
         <div class="options-container" id="optionsContainer">
-            <!-- Dynamic options will be populated here -->
+            <!-- Dynamic options will be populated here ..-->
         </div>
     </div>
 </div>
