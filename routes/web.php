@@ -11,3 +11,4 @@ Route::get('/chatbot/categories', [ChatbotController::class, 'getCategories'])->
 Route::post('/chatbot/questions', [ChatbotController::class, 'getQuestionsByCategory'])->name('chatbot.questions');
 Route::post('/chatbot/answer', [ChatbotController::class, 'getAnswer'])->name('chatbot.answer');
 Route::post('/chatbot/search', [ChatbotController::class, 'searchAnswer'])->name('chatbot.search');
+Route::post('/chatbot/live-answer', [ChatbotController::class, 'getLiveAnswer']);

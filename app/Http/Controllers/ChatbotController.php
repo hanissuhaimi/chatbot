@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Models\Projects;
 
 class ChatbotController extends Controller
 {
@@ -88,4 +89,32 @@ class ChatbotController extends Controller
 
         return response()->json(['results' => $results]);
     }
+
+    public function getLiveAnswer(Request $request): JsonResponse
+    {
+        $query = strtolower($request->input('query'));
+
+        // Pattern: What is the completion percentage of project [title]
+        if (preg_match('/completion.*project (.+)/', $query, $matches)) {
+            $projectName = trim($matches[1]);
+
+            $project = Projects::where('title', 'like', "%{$projectName}%")->first();
+
+            if ($project) {
+                $value = $project->complete_percentage ?? 'N/A';
+                return response()->json([
+                    'answer' => "The completion percentage of project \"{$project->title}\" is {$value}%."
+                ]);
+            } else {
+                return response()->json([
+                    'answer' => "Sorry, I couldn't find any project named \"{$projectName}\"."
+                ]);
+            }
+        }
+
+        return response()->json([
+            'answer' => "Sorry, I didn’t understand your request. Try asking: 'What is the completion percentage of project XYZ?'"
+        ]);
+    }
+
 }

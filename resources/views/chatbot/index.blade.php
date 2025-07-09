@@ -266,6 +266,15 @@ class ChatBot {
         this.showTyping();
         
         try {
+            const liveRes = await axios.post('/chatbot/live-answer', { query });
+            const liveAnswer = liveRes.data.answer;
+
+            if (!liveAnswer.includes("didn’t understand") && !liveAnswer.includes("couldn't find")) {
+                this.hideTyping();
+                this.addMessage('bot', liveAnswer);
+                this.showFollowUpOptions();
+                return;
+            }
             const response = await axios.post('/chatbot/search', { query: query });
             const results = response.data.results;
             
