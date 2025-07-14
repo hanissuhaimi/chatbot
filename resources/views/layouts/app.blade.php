@@ -63,7 +63,7 @@
             position: relative;
         }
 
-        .chatbot-header::before {
+        /*.chatbot-header::before {
             content: '';
             position: absolute;
             top: 0;
@@ -71,7 +71,7 @@
             right: 0;
             height: 4px;
             background: linear-gradient(90deg, #dc2626, #b91c1c);
-        }
+        }**/
 
         .chatbot-header h2 {
             font-size: 1.8rem;
@@ -235,6 +235,13 @@
             color: white;
             border-color: #dc2626;
             transform: translateY(-2px);
+        }
+        
+        .button-group {
+            display: flex;
+            flex-direction: column; 
+            gap: 10px; 
+            margin-top: 10px;
         }
 
         .typing-indicator {

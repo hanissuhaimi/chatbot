@@ -92,29 +92,53 @@ class ChatbotController extends Controller
 
     public function getLiveAnswer(Request $request): JsonResponse
     {
-        $query = strtolower($request->input('query'));
+        try {
+            $query = strtolower($request->input('query'));
 
-        // Pattern: What is the completion percentage of project [title]
-        if (preg_match('/completion.*project (.+)/', $query, $matches)) {
-            $projectName = trim($matches[1]);
+            if (preg_match('/(?:completion|progress).*project\s+(.+)/i', $query, $matches)) {
+                $projectName = trim($matches[1], " \t\n\r\0\x0B?.,'\"");
 
-            $project = Projects::where('title', 'like', "%{$projectName}%")->first();
+                \Log::info("🔎 Searching project title like: %{$projectName}%");
 
-            if ($project) {
-                $value = $project->complete_percentage ?? 'N/A';
-                return response()->json([
-                    'answer' => "The completion percentage of project \"{$project->title}\" is {$value}%."
-                ]);
-            } else {
-                return response()->json([
-                    'answer' => "Sorry, I couldn't find any project named \"{$projectName}\"."
-                ]);
+                $project = Projects::where('title', 'like', "%{$projectName}%")
+                    ->first();
+
+                if ($project) {
+                    $value = $project->complete_percentage ?? $project->progress;
+
+                    if ($value !== null) {
+                        return response()->json([
+                            'answer' => "The completion percentage of project \"{$project->title}\" is {$value}%.",
+                            'success' => true
+                        ]);
+                    } else {
+                        return response()->json([
+                            'answer' => "Project \"{$project->title}\" found, but no progress data is available.",
+                            'success' => false
+                        ]);
+                    }
+                } else {
+                    return response()->json([
+                        'answer' => "Sorry, I couldn't find any project named \"{$projectName}\".",
+                        'success' => false
+                    ]);
+                }
             }
-        }
 
-        return response()->json([
-            'answer' => "Sorry, I didn’t understand your request. Try asking: 'What is the completion percentage of project XYZ?'"
-        ]);
+            return response()->json([
+                'answer' => "Sorry, I didn’t understand your request. Try asking: 'What is the completion percentage of project XYZ?'",
+                'success' => false
+            ]);
+
+        } catch (\Throwable $e) {
+            \Log::error('🔥 Live answer error: ' . $e->getMessage());
+            return response()->json([
+                'answer' => "An unexpected error occurred. Please contact IT support.",
+                'success' => false
+            ], 500);
+        }
     }
+
+
 
 }

@@ -10,7 +10,7 @@
             <i class="fas fa-robot"></i> 
             PROMPT Assistant
         </h2>
-        <p>I'm here to help you with your project management questions</p>
+        <!--<p>I'm here to help you with your project management questions</p>-->
     </div>
 
     <div class="chat-messages" id="chatMessages">
@@ -27,9 +27,6 @@
             <button class="btn btn-primary" id="sendBtn" disabled>
                 <i class="fas fa-paper-plane"></i>
             </button>
-        </div>
-        <div class="options-container" id="optionsContainer">
-            <!-- Dynamic options will be populated here ..-->
         </div>
     </div>
 </div>
@@ -70,6 +67,7 @@ class ChatBot {
     async loadCategories() {
         try {
             const response = await axios.get('/chatbot/categories');
+            console.log("Loaded categories:", response.data.categories);
             this.categories = response.data.categories;
         } catch (error) {
             console.error('Error loading categories:', error);
@@ -88,19 +86,25 @@ class ChatBot {
         }, 1000);
     }
 
-    addMessage(sender, message) {
+    addMessage(sender, message, isElement = false) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${sender}`;
         
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
-        messageContent.innerHTML = message;
-        
+
+        if (isElement && message instanceof HTMLElement) {
+            messageContent.appendChild(message);
+        } else {
+            messageContent.innerHTML = message;
+        }
+
         messageDiv.appendChild(messageContent);
         this.chatMessages.appendChild(messageDiv);
         
         this.scrollToBottom();
     }
+
 
     showTyping() {
         this.typingIndicator.style.display = 'block';
@@ -112,24 +116,36 @@ class ChatBot {
     }
 
     showOptions(options) {
-        this.optionsContainer.innerHTML = '';
-        
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message bot';
+
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+
+        const buttonGroup = document.createElement('div');
+        buttonGroup.className = 'button-group';
+
         options.forEach(option => {
             const btn = document.createElement('button');
             btn.className = 'option-btn';
             btn.textContent = option.text;
             btn.onclick = () => this.handleOptionClick(option);
-            this.optionsContainer.appendChild(btn);
+            buttonGroup.appendChild(btn);
         });
+
+        messageContent.appendChild(buttonGroup);
+        messageDiv.appendChild(messageContent);
+        this.chatMessages.appendChild(messageDiv);
+        this.scrollToBottom();
     }
 
-    clearOptions() {
+    /**clearOptions() {
         this.optionsContainer.innerHTML = '';
-    }
+    }*/
 
     handleOptionClick(option) {
         this.addMessage('user', option.text);
-        this.clearOptions();
+        // this.clearOptions();
         
         this.showTyping();
         
@@ -196,7 +212,7 @@ class ChatBot {
             }));
             
             questionOptions.push(
-                { text: '← Back to Categories', action: 'backToCategories' },
+                { text: 'Back to Categories', action: 'backToCategories' },
                 { text: 'Ask a different question', action: 'newQuestion' }
             );
             
@@ -269,9 +285,9 @@ class ChatBot {
             const liveRes = await axios.post('/chatbot/live-answer', { query });
             const liveAnswer = liveRes.data.answer;
 
-            if (!liveAnswer.includes("didn’t understand") && !liveAnswer.includes("couldn't find")) {
+            if (liveRes.data.success) {
                 this.hideTyping();
-                this.addMessage('bot', liveAnswer);
+                this.addMessage('bot', liveRes.data.answer);
                 this.showFollowUpOptions();
                 return;
             }
@@ -303,7 +319,7 @@ class ChatBot {
         } catch (error) {
             console.error('Error searching:', error);
             this.hideTyping();
-            this.addMessage('bot', 'Sorry, I encountered an error while searching. Please try again or contact IT support.');
+            this.addMessage('bot', 'Sorry, I encountered an error while searching. Please try again.');
             this.showFollowUpOptions();
         }
     }
