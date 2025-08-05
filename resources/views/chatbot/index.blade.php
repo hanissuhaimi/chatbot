@@ -11,7 +11,6 @@
             <i class="fas fa-robot"></i> 
             PROMPT Assistant
         </h2>
-        <!--<p>I'm here to help you with your project management questions</p>-->
     </div>
 
     <div class="chat-messages" id="chatMessages">
@@ -46,13 +45,13 @@ class ChatBot {
         this.chatMessages = document.getElementById('chatMessages');
         this.messageInput = document.getElementById('messageInput');
         this.sendBtn = document.getElementById('sendBtn');
-        this.optionsContainer = document.getElementById('optionsContainer');
         this.typingIndicator = document.getElementById('typingIndicator');
         
         this.currentStep = 'greeting';
         this.selectedCategory = null;
+        this.selectedSubcategory = null;
         this.categories = [];
-        this.lang = 'en'; // default
+        this.lang = this.getStoredLanguage() || 'en';
         
         // Get translations from server
         this.translations = window.translations || {};
@@ -60,16 +59,20 @@ class ChatBot {
         this.init();
     }
 
+    getStoredLanguage() {
+        return localStorage.getItem('chatbot_lang') || 'en';
+    }
+
     init() {
         this.setupEventListeners();
         this.startConversation();
-        this.loadCategories();
     }
 
     setupEventListeners() {
         this.sendBtn.addEventListener('click', () => this.sendMessage());
         this.messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 this.sendMessage();
             }
         });
@@ -77,11 +80,7 @@ class ChatBot {
 
     // Helper method to get translation for current language
     t(key, replacements = {}) {
-        console.log('Looking for translation key:', key, 'in language:', this.lang);
-        
         let text = this.translations[this.lang]?.[key] || this.translations['en']?.[key] || key;
-        
-        console.log('Found translation:', text);
         
         // Handle replacements like :category
         Object.keys(replacements).forEach(placeholder => {
@@ -92,109 +91,84 @@ class ChatBot {
     }
 
     async loadCategories() {
-    try {
-        console.log('🔍 Loading categories for language:', this.lang);
-        console.log('🔍 Making GET request to: /chatbot/categories');
-        console.log('🔍 Request params:', { lang: this.lang });
-        
-        // Since your route is GET, use query parameters instead of request body
-        const response = await axios.get('/chatbot/categories', {
-            params: { lang: this.lang }  // This sends as ?lang=en or ?lang=bm
-        });
-        
-        console.log("✅ API Response received:", response);
-        console.log("✅ Response status:", response.status);
-        console.log("✅ Response data:", response.data);
-        
-        if (response.data && response.data.categories) {
-            this.categories = response.data.categories;
-            console.log("✅ Categories successfully loaded:", this.categories);
-            console.log("✅ Number of categories:", this.categories.length);
-        } else {
-            console.warn('⚠️ No categories in response:', response.data);
-            this.categories = [];
-        }
-        
-    } catch (error) {
-        console.error('❌ Error loading categories:', error);
-        
-        if (error.response) {
-            console.error('❌ Response status:', error.response.status);
-            console.error('❌ Response headers:', error.response.headers);
-            console.error('❌ Response data:', error.response.data);
+        try {
+            console.log('🔍 Loading categories for language:', this.lang);
             
-            if (error.response.status === 404) {
-                console.error('❌ Route not found - check if /chatbot/categories route exists');
-            } else if (error.response.status === 500) {
-                console.error('❌ Server error - check Laravel logs');
+            const response = await axios.get('/chatbot/categories', {
+                params: { lang: this.lang }
+            });
+            
+            console.log("✅ Categories API Response:", response.data);
+            
+            if (response.data && response.data.categories) {
+                this.categories = response.data.categories;
+                console.log("✅ Categories loaded:", this.categories.length);
+                return true;
+            } else {
+                console.warn('⚠️ No categories in response');
+                this.categories = [];
+                return false;
             }
-        } else if (error.request) {
-            console.error('❌ Request was made but no response received:', error.request);
-        } else {
-            console.error('❌ Error setting up request:', error.message);
+            
+        } catch (error) {
+            console.error('❌ Error loading categories:', error);
+            this.categories = [];
+            
+            // Handle specific error cases
+            if (error.response?.status === 500) {
+                console.error('❌ Server error - check knowledge base file and Laravel logs');
+            }
+            
+            return false;
         }
-        
-        this.categories = [];
-        throw error;
     }
-}
 
     startConversation() {
-        this.addMessage('bot', this.t('start_message'));
+        this.addMessage('bot', this.t('start_message') || 'Hello! Welcome to PROMPT Assistant.');
 
         setTimeout(() => {
             this.showOptions([
-                { text: this.t('english'), action: 'setLanguage', data: 'en' },
-                { text: this.t('malay'), action: 'setLanguage', data: 'bm' }
+                { text: this.t('english') || 'English', action: 'setLanguage', data: 'en' },
+                { text: this.t('malay') || 'Bahasa Malaysia', action: 'setLanguage', data: 'bm' }
             ]);
         }, 1000);
     }
 
     async setLanguageAndContinue(lang) {
-        console.log('🚀 Step 1: Setting language to:', lang);
+        console.log('🚀 Setting language to:', lang);
         this.lang = lang;
         localStorage.setItem('chatbot_lang', lang);
 
-        console.log('🚀 Step 2: Setting language on server...');
+        // Set language on server
         try {
-            const response = await axios.post('/chatbot/set-language', { lang: lang });
-            console.log('✅ Step 2: Language set on server successfully:', response.data);
+            await axios.post('/chatbot/set-language', { lang: lang });
+            console.log('✅ Language set on server');
         } catch (error) {
-            console.error('❌ Step 2: Error setting language on server:', error);
-            console.log('🔄 Step 2: Continuing anyway...');
+            console.error('❌ Error setting language on server:', error);
         }
 
-        console.log('🚀 Step 3: Clearing existing categories');
+        // Clear existing data
         this.categories = [];
+        this.selectedCategory = null;
+        this.selectedSubcategory = null;
+
+        this.addMessage('bot', this.t('welcome_message') || 'Welcome! I\'m here to help you.');
+
+        // Pre-load categories
+        console.log('🚀 Pre-loading categories...');
+        const categoriesLoaded = await this.loadCategories();
         
-        console.log('🚀 Step 4: Checking translations');
-        console.log('Available translations:', this.translations);
-        console.log('Current language translations:', this.translations[this.lang]);
-
-        console.log('🚀 Step 5: Showing welcome message');
-        this.addMessage('bot', this.t('welcome_message'));
-
-        console.log('🚀 Step 6: Pre-loading categories...');
-        try {
-            await this.loadCategories();
-            console.log('✅ Step 6: Categories pre-loaded successfully');
-        } catch (error) {
-            console.error('❌ Step 6: Failed to pre-load categories:', error);
-            console.log('🔄 Step 6: Will try loading categories when needed');
+        if (!categoriesLoaded) {
+            console.warn('⚠️ Failed to pre-load categories');
         }
 
-        console.log('🚀 Step 7: Setting up help prompt...');
         setTimeout(() => {
-            console.log('🚀 Step 7: Showing help prompt now');
-            this.addMessage('bot', this.t('need_help_prompt'));
+            this.addMessage('bot', this.t('need_help_prompt') || 'Do you need help with something?');
             this.showOptions([
-                { text: this.t('yes_help'), action: 'needHelp' },
-                { text: this.t('no_help'), action: 'noHelp' }
+                { text: this.t('yes_help') || 'Yes, I need help', action: 'needHelp' },
+                { text: this.t('no_help') || 'No, thank you', action: 'noHelp' }
             ]);
-            console.log('✅ Step 7: Help prompt setup complete');
         }, 1000);
-        
-        console.log('✅ setLanguageAndContinue completed');
     }
 
     addMessage(sender, message, isElement = false) {
@@ -207,13 +181,18 @@ class ChatBot {
         if (isElement && message instanceof HTMLElement) {
             messageContent.appendChild(message);
         } else {
-            messageContent.innerHTML = message;
+            messageContent.innerHTML = this.formatMessage(message);
         }
 
         messageDiv.appendChild(messageContent);
         this.chatMessages.appendChild(messageDiv);
         
         this.scrollToBottom();
+    }
+
+    formatMessage(message) {
+        // Convert newlines to <br> tags and handle basic formatting
+        return message.replace(/\n/g, '<br>');
     }
 
     showTyping() {
@@ -257,101 +236,95 @@ class ChatBot {
         setTimeout(() => {
             this.hideTyping();
             this.handleAction(option.action, option.data);
-        }, 1000);
+        }, 800);
     }
 
-    handleAction(action, data) {
+    async handleAction(action, data) {
         console.log('🎯 Handling action:', action, 'with data:', data);
-        console.log('🎯 Current categories count:', this.categories.length);
-        console.log('🎯 Categories:', this.categories);
         
-        switch (action) {
-            case 'setLanguage':
-                console.log('🎯 Processing setLanguage action with:', data);
-                this.setLanguageAndContinue(data);
-                break;
-                
-            case 'needHelp':
-                console.log('🎯 Processing needHelp action');
-                if (this.categories.length === 0) {
-                    console.log('🎯 No categories loaded, loading now...');
-                    this.addMessage('bot', this.t('loading_categories') || 'Loading available topics...');
-                    this.showTyping();
+        try {
+            switch (action) {
+                case 'setLanguage':
+                    await this.setLanguageAndContinue(data);
+                    break;
                     
-                    this.loadCategories().then(() => {
-                        console.log('✅ Categories loaded in needHelp, hiding typing');
-                        this.hideTyping();
-                        if (this.categories.length > 0) {
-                            console.log('✅ Showing categories:', this.categories);
-                            this.showCategories();
-                        } else {
-                            console.log('⚠️ Still no categories, enabling free text');
-                            this.addMessage('bot', this.t('no_categories') || 'No help topics available. Please type your question directly.');
-                            this.enableFreeText();
-                        }
-                    }).catch((error) => {
-                        console.error('❌ Failed to load categories in needHelp:', error);
-                        this.hideTyping();
-                        this.addMessage('bot', this.t('error_loading_categories') || 'Sorry, I cannot load the help topics right now. Please type your question directly.');
-                        this.enableFreeText();
-                    });
-                } else {
-                    console.log('✅ Categories already loaded, showing them');
+                case 'needHelp':
+                    await this.handleNeedHelp();
+                    break;
+                    
+                case 'noHelp':
+                    this.addMessage('bot', this.t('thank_you') || 'Thank you! Feel free to ask if you need help later.');
+                    break;
+                    
+                case 'selectCategory':
+                    this.selectedCategory = data;
+                    await this.showQuestions(data);
+                    break;
+                    
+                case 'selectSubcategory':
+                    this.selectedSubcategory = data.subcategory;
+                    await this.showSubcategoryQuestions(data.category, data.subcategory);
+                    break;
+                    
+                case 'askQuestion':
+                    await this.handleQuestion(data);
+                    break;
+                    
+                case 'showDirectQuestions':
+                    this.showDirectQuestions(data.category, data.questions);
+                    break;
+                    
+                case 'backToCategories':
+                    this.selectedCategory = null;
+                    this.selectedSubcategory = null;
                     this.showCategories();
-                }
-                break;
-                
-            case 'noHelp':
-                console.log('🎯 Processing noHelp action');
-                this.addMessage('bot', this.t('thank_you'));
-                break;
-                
-            case 'selectCategory':
-                console.log('🎯 Processing selectCategory action with:', data);
-                this.selectedCategory = data;
-                this.showQuestions(data);
-                break;
-                
-            case 'askQuestion':
-                console.log('🎯 Processing askQuestion action with:', data);
-                this.handleQuestion(data);
-                break;
-                
-            case 'backToCategories':
-                console.log('🎯 Processing backToCategories action');
-                this.showCategories();
-                break;
+                    break;
 
-            case 'selectSubcategory':
-                console.log('🎯 Processing selectSubcategory action with:', data);
-                this.showSubcategoryQuestions(data.category, data.subcategory);
-                break;
+                case 'backToSubcategories':
+                    this.selectedSubcategory = null;
+                    await this.showQuestions(this.selectedCategory);
+                    break;
+                    
+                case 'newQuestion':
+                    this.enableFreeText();
+                    break;
+                    
+                default:
+                    console.error('❌ Unknown action:', action);
+                    this.addMessage('bot', 'Something went wrong. Please try again.');
+                    this.showFollowUpOptions();
+            }
+        } catch (error) {
+            console.error('❌ Error handling action:', error);
+            this.addMessage('bot', this.t('error_occurred') || 'An error occurred. Please try again.');
+            this.showFollowUpOptions();
+        }
+    }
 
-            case 'backToSubcategories':
-                console.log('🎯 Processing backToSubcategories action');
-                this.showQuestions(this.selectedCategory);
-                break;
+    async handleNeedHelp() {
+        console.log('🎯 Processing needHelp - categories count:', this.categories.length);
+        
+        if (this.categories.length === 0) {
+            this.addMessage('bot', this.t('loading_categories') || 'Loading available topics...');
+            this.showTyping();
             
-            case 'showDirectQuestions':
-                console.log('🎯 Processing showDirectQuestions action with:', data);
-                this.showDirectQuestions(data.category, data.questions);
-                break;
-                
-            case 'newQuestion':
-                console.log('🎯 Processing newQuestion action');
+            const success = await this.loadCategories();
+            this.hideTyping();
+            
+            if (success && this.categories.length > 0) {
+                this.showCategories();
+            } else {
+                this.addMessage('bot', this.t('error_loading_categories') || 'Sorry, I cannot load the help topics right now. Please type your question directly.');
                 this.enableFreeText();
-                break;
-                
-            default:
-                console.error('❌ Unknown action:', action);
-                this.addMessage('bot', 'Something went wrong. Please try again.');
-                this.showFollowUpOptions();
+            }
+        } else {
+            this.showCategories();
         }
     }
 
     showCategories() {
         this.currentStep = 'categories';
-        this.addMessage('bot', this.t('select_category'));
+        this.addMessage('bot', this.t('select_category') || 'Please select a category:');
         
         const categoryOptions = this.categories.map(category => ({
             text: category,
@@ -368,62 +341,60 @@ class ChatBot {
     }
 
     async showQuestions(category) {
-        console.log('🔍 showQuestions called with category:', category);
-        console.log('🔍 Current language:', this.lang);
+        console.log('🔍 Loading questions for category:', category);
         
         this.currentStep = 'questions';
-        this.selectedCategory = category; // Store selected category
-        this.addMessage('bot', this.t('selected_category', { category: category }));
+        this.selectedCategory = category;
+        this.addMessage('bot', this.t('selected_category', { category: category }) || `You selected: ${category}`);
         
-        // Show typing indicator while loading
         this.showTyping();
         
         try {
-            console.log('🔍 Making request to /chatbot/questions');
-            console.log('🔍 Request payload:', { category: category, lang: this.lang });
-            
             const response = await axios.post('/chatbot/questions', {
                 category: category,
                 lang: this.lang
             });
             
-            console.log('✅ Questions API response:', response);
-            console.log('✅ Response data:', response.data);
-            
-            // Hide typing indicator
             this.hideTyping();
             
-            if (!response.data) {
-                console.error('❌ No data in response');
-                throw new Error('No data received from server');
-            }
+            console.log('✅ Questions response:', response.data);
             
             const questions = response.data.questions || [];
             const subcategories = response.data.subcategories || [];
+            const hasSubcategories = response.data.has_subcategories || false;
+            const hasDirectQuestions = response.data.has_direct_questions || false;
             
-            console.log('✅ Questions received:', questions);
-            console.log('✅ Subcategories received:', subcategories);
+            console.log('Questions:', questions.length, 'Subcategories:', subcategories.length);
             
-            // Check if we have subcategories
-            if (subcategories.length > 0) {
-                console.log('✅ Category has subcategories, showing subcategory selection');
-                this.showSubcategorySelection(category, subcategories, questions);
-            } else {
-                console.log('✅ Category has no subcategories, showing direct questions');
+            if (hasSubcategories) {
+                this.showSubcategorySelection(category, subcategories, questions, hasDirectQuestions);
+            } else if (hasDirectQuestions || questions.length > 0) {
                 this.showDirectQuestions(category, questions);
+            } else {
+                this.addMessage('bot', this.t('no_questions_found') || 'No questions found for this category.');
+                this.showOptions([
+                    { text: this.t('back_to_categories') || 'Back to Categories', action: 'backToCategories' }
+                ]);
             }
             
         } catch (error) {
-            console.error('❌ Error in showQuestions:', error);
+            console.error('❌ Error loading questions:', error);
             this.hideTyping();
-            this.addMessage('bot', this.t('error_loading_questions') || 'Sorry, I couldn\'t load the questions for this category.');
+            
+            let errorMessage = this.t('error_loading_questions') || 'Sorry, I couldn\'t load the questions for this category.';
+            
+            if (error.response?.data?.error) {
+                errorMessage += ' ' + error.response.data.error;
+            }
+            
+            this.addMessage('bot', errorMessage);
             this.showOptions([
-                { text: this.t('back_to_categories'), action: 'backToCategories' },
+                { text: this.t('back_to_categories') || 'Back to Categories', action: 'backToCategories' }
             ]);
         }
     }
 
-    showSubcategorySelection(category, subcategories, directQuestions) {
+    showSubcategorySelection(category, subcategories, directQuestions, hasDirectQuestions) {
         const options = [];
         
         // Add subcategory options
@@ -435,8 +406,8 @@ class ChatBot {
             });
         });
         
-        // If there are direct questions (not in subcategories), add option to view them
-        if (directQuestions.length > 0) {
+        // If there are direct questions, add option to view them
+        if (hasDirectQuestions && directQuestions.length > 0) {
             options.push({
                 text: this.t('general_questions') || `General ${category} Questions`,
                 action: 'showDirectQuestions',
@@ -445,20 +416,20 @@ class ChatBot {
         }
         
         // Add navigation options
-        options.push(
-            { text: this.t('back_to_categories'), action: 'backToCategories' },
-        );
+        options.push({
+            text: this.t('back_to_categories') || 'Back to Categories', 
+            action: 'backToCategories'
+        });
         
         this.addMessage('bot', this.t('select_subcategory') || 'Please select a subcategory:');
         this.showOptions(options);
     }
 
     showDirectQuestions(category, questions) {
-        if (questions.length === 0) {
-            console.warn('⚠️ No questions found for category:', category);
+        if (!questions || questions.length === 0) {
             this.addMessage('bot', this.t('no_questions_found') || `No questions found for ${category}.`);
             this.showOptions([
-                { text: this.t('back_to_categories'), action: 'backToCategories' },
+                { text: this.t('back_to_categories') || 'Back to Categories', action: 'backToCategories' }
             ]);
             return;
         }
@@ -466,18 +437,31 @@ class ChatBot {
         const questionOptions = questions.map(question => ({
             text: question,
             action: 'askQuestion',
-            data: { category: category, question: question }
+            data: { 
+                category: category, 
+                question: question,
+                subcategory: this.selectedSubcategory // Include current subcategory if any
+            }
         }));
         
-        questionOptions.push(
-            { text: this.t('back_to_categories'), action: 'backToCategories' },
-        );
+        // Add navigation options
+        if (this.selectedSubcategory) {
+            questionOptions.push({
+                text: this.t('back_to_subcategories') || 'Back to Subcategories', 
+                action: 'backToSubcategories'
+            });
+        }
+        
+        questionOptions.push({
+            text: this.t('back_to_categories') || 'Back to Categories', 
+            action: 'backToCategories'
+        });
         
         this.showOptions(questionOptions);
     }
 
     async showSubcategoryQuestions(category, subcategory) {
-        console.log('🔍 showSubcategoryQuestions called:', { category, subcategory });
+        console.log('🔍 Loading subcategory questions:', { category, subcategory });
         
         this.addMessage('bot', this.t('selected_subcategory', { subcategory: subcategory }) || `You selected: ${subcategory}`);
         this.showTyping();
@@ -492,106 +476,99 @@ class ChatBot {
             this.hideTyping();
             
             const questions = response.data.questions || [];
-            console.log('✅ Subcategory questions:', questions);
+            console.log('✅ Subcategory questions:', questions.length);
             
             if (questions.length === 0) {
                 this.addMessage('bot', this.t('no_questions_in_subcategory') || `No questions found in ${subcategory}.`);
-            } else {
-                const questionOptions = questions.map(question => ({
-                    text: question,
-                    action: 'askQuestion',
-                    data: { category: category, subcategory: subcategory, question: question }
-                }));
-                
-                questionOptions.push(
+                this.showOptions([
                     { text: this.t('back_to_subcategories') || 'Back to Subcategories', action: 'backToSubcategories' },
-                    { text: this.t('back_to_categories'), action: 'backToCategories' },
-                );
-                
-                this.showOptions(questionOptions);
+                    { text: this.t('back_to_categories') || 'Back to Categories', action: 'backToCategories' }
+                ]);
+            } else {
+                this.showDirectQuestions(category, questions);
             }
             
         } catch (error) {
             console.error('❌ Error loading subcategory questions:', error);
             this.hideTyping();
+            
             this.addMessage('bot', this.t('error_loading_questions') || 'Sorry, I couldn\'t load the questions.');
             this.showOptions([
                 { text: this.t('back_to_subcategories') || 'Back to Subcategories', action: 'backToSubcategories' },
-                { text: this.t('back_to_categories'), action: 'backToCategories' }
+                { text: this.t('back_to_categories') || 'Back to Categories', action: 'backToCategories' }
             ]);
         }
     }
 
     async handleQuestion(data) {
-        console.log('🎯 === DEBUG handleQuestion ===');
-        console.log('🎯 Question data:', data);
-        console.log('🎯 Current language:', this.lang);
+        console.log('🎯 Processing question:', data);
         
-        this.addMessage('bot', this.t('searching_answer'));
+        this.addMessage('bot', this.t('searching_answer') || 'Let me find the answer for you...');
+        this.showTyping();
         
         try {
-            // Prepare the request payload
             const requestPayload = {
                 category: data.category,
                 question: data.question,
                 lang: this.lang
             };
             
-            // Add subcategory if it exists
+            // Include subcategory if it exists
             if (data.subcategory) {
                 requestPayload.subcategory = data.subcategory;
-                console.log('🎯 Including subcategory:', data.subcategory);
             }
             
             console.log('🎯 Request payload:', requestPayload);
             
             const response = await axios.post('/chatbot/answer', requestPayload);
             
-            console.log('✅ Answer response:', response);
-            console.log('✅ Response data:', response.data);
+            this.hideTyping();
             
-            const answer = response.data.answer;
+            console.log('✅ Answer response:', response.data);
             
-            if (!answer || answer.trim() === '') {
-                console.warn('⚠️ Empty answer received');
-                throw new Error('Empty answer received');
-            }
-            
-            setTimeout(() => {
-                this.addMessage('bot', answer);
+            if (response.data.success && response.data.answer && response.data.answer.trim()) {
+                setTimeout(() => {
+                    this.addMessage('bot', response.data.answer);
+                    this.showFollowUpOptions();
+                }, 500);
+            } else {
+                this.addMessage('bot', response.data.answer || this.t('no_answer_found') || 'Sorry, I couldn\'t find an answer to that question.');
                 this.showFollowUpOptions();
-            }, 1000);
+            }
             
         } catch (error) {
             console.error('❌ Error getting answer:', error);
+            this.hideTyping();
             
-            if (error.response) {
-                console.error('❌ Response status:', error.response.status);
-                console.error('❌ Response data:', error.response.data);
+            let errorMessage = this.t('no_answer_found') || 'Sorry, I couldn\'t find an answer to that question.';
+            
+            if (error.response?.data?.answer) {
+                errorMessage = error.response.data.answer;
             }
             
-            this.addMessage('bot', this.t('no_answer_found'));
+            this.addMessage('bot', errorMessage);
             this.showFollowUpOptions();
         }
     }
 
     showFollowUpOptions() {
         setTimeout(() => {
-            this.addMessage('bot', this.t('more_help'));
+            this.addMessage('bot', this.t('more_help') || 'Can I help you with anything else?');
             this.showOptions([
-                { text: this.t('back_to_categories'), action: 'backToCategories' },
-                { text: this.t('another_question'), action: 'newQuestion' },
-                { text: this.t('done'), action: 'noHelp' }
+                { text: this.t('back_to_categories') || 'Back to Categories', action: 'backToCategories' },
+                { text: this.t('another_question') || 'Ask Another Question', action: 'newQuestion' },
+                { text: this.t('done') || 'That\'s all, thanks!', action: 'noHelp' }
             ]);
-        }, 1500);
+        }, 1000);
     }
 
     enableFreeText() {
         this.currentStep = 'freeText';
-        this.addMessage('bot', this.t('type_question'));
+        this.addMessage('bot', this.t('type_question') || 'Please type your question and I\'ll try to help you:');
         this.messageInput.disabled = false;
         this.sendBtn.disabled = false;
         this.messageInput.focus();
+        this.messageInput.placeholder = this.t('type_here') || 'Type your question here...';
     }
 
     sendMessage() {
@@ -610,51 +587,73 @@ class ChatBot {
         this.showTyping();
         
         try {
-            const liveRes = await axios.post('/chatbot/live-answer', {
-                query,
+            // First try live answer (for project status queries)
+            console.log('🔍 Trying live answer for:', query);
+            const liveResponse = await axios.post('/chatbot/live-answer', {
+                query: query,
                 lang: this.lang
             });
-            const liveAnswer = liveRes.data.answer;
-
-            if (liveRes.data.success) {
+            
+            console.log('✅ Live answer response:', liveResponse.data);
+            
+            if (liveResponse.data.success) {
                 this.hideTyping();
-                this.addMessage('bot', liveRes.data.answer);
+                this.addMessage('bot', liveResponse.data.answer);
                 this.showFollowUpOptions();
                 return;
             }
             
-            const response = await axios.post('/chatbot/search', {
-                query,
+            // If no live answer, try regular search
+            console.log('🔍 Trying regular search for:', query);
+            const searchResponse = await axios.post('/chatbot/search', {
+                query: query,
                 lang: this.lang
             });
-            const results = response.data.results;
+            
+            const results = searchResponse.data.results || [];
+            console.log('✅ Search results:', results.length);
             
             this.hideTyping();
             
             if (results.length > 0) {
                 const bestMatch = results[0];
-                this.addMessage('bot', this.t('info_found', { question: bestMatch.question }));
-                this.addMessage('bot', bestMatch.answer);
+                this.addMessage('bot', this.t('info_found', { question: bestMatch.question }) || `I found this information:`);
                 
-                if (results.length > 1) {
-                    this.addMessage('bot', this.t('other_topics'));
-                    const relatedOptions = results.slice(1, 4).map(result => ({
-                        text: result.question,
-                        action: 'askQuestion',
-                        data: { category: result.category, question: result.question }
-                    }));
-                    this.showOptions(relatedOptions);
-                }
+                setTimeout(() => {
+                    this.addMessage('bot', bestMatch.answer);
+                    
+                    // Show related questions if available
+                    if (results.length > 1) {
+                        setTimeout(() => {
+                            this.addMessage('bot', this.t('other_topics') || 'Here are some related topics:');
+                            const relatedOptions = results.slice(1, 4).map(result => ({
+                                text: result.question,
+                                action: 'askQuestion',
+                                data: { 
+                                    category: result.category, 
+                                    question: result.question,
+                                    subcategory: result.subcategory 
+                                }
+                            }));
+                            this.showOptions(relatedOptions);
+                            this.showFollowUpOptions();
+                        }, 1000);
+                    } else {
+                        this.showFollowUpOptions();
+                    }
+                }, 500);
             } else {
-                this.addMessage('bot', this.t('no_results'));
+                // No results found
+                const noResultsMsg = liveResponse.data.answer || this.t('no_results') || 'Sorry, I couldn\'t find information about that. Please try rephrasing your question or select a category from the main menu.';
+                this.addMessage('bot', noResultsMsg);
+                this.showFollowUpOptions();
             }
             
-            this.showFollowUpOptions();
-            
         } catch (error) {
-            console.error('Error searching:', error);
+            console.error('❌ Error in search:', error);
             this.hideTyping();
-            this.addMessage('bot', this.t('error_searching'));
+            
+            this.addMessage('bot', this.t('error_searching') || 'Sorry, there was an error processing your request. Please try again.');
             this.showFollowUpOptions();
         }
     }
@@ -666,7 +665,11 @@ class ChatBot {
 
 // Initialize the chatbot when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    new ChatBot();
+    try {
+        new ChatBot();
+    } catch (error) {
+        console.error('❌ Error initializing chatbot:', error);
+    }
 });
 </script>
 @endsection

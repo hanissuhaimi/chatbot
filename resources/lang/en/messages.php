@@ -17,6 +17,7 @@ return [
     'general_questions' => 'General Questions',
     'back_to_subcategories' => 'Back to Subcategories',
     'no_questions_in_subcategory' => 'No questions found in this subcategory.',
+    'no_questions_found' => 'No questions found in this category.',
     'back_to_categories' => 'Back to Categories',
     'ask_different_question' => 'Ask a different question',
     'searching_answer' => 'Let me find the answer for you...',
@@ -31,4 +32,5 @@ return [
     'error_loading_categories' => "Sorry, I couldn't load the categories. Please try again later.",
     'error_loading_questions' => "Sorry, I encountered an error loading the questions. Please try again.",
     'error_searching' => 'Sorry, I encountered an error while searching the answer. Please try again.',
+    'type_here' => 'Type your question here'
 ];

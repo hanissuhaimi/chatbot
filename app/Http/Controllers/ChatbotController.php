@@ -19,53 +19,6 @@ class ChatbotController extends Controller
         $this->knowledgeBaseService = $knowledgeBaseService;
     }
 
-    private function loadKnowledgeBase(): Collection
-    {
-        try {
-            $path = storage_path('app/knowledge/KnowledgeBase.xlsx');
-            
-            // Check if file exists
-            if (!file_exists($path)) {
-                \Log::error('Knowledge base file not found: ' . $path);
-                throw new \Exception('Knowledge base file not found');
-            }
-            
-            \Log::info('Loading knowledge base from: ' . $path);
-            \Log::info('File size: ' . filesize($path) . ' bytes');
-            
-            // Load the Excel file
-            $collection = Excel::toCollection(null, $path);
-            
-            if ($collection->isEmpty()) {
-                \Log::error('Excel file is empty or has no sheets');
-                throw new \Exception('Excel file is empty or has no sheets');
-            }
-            
-            $sheet = $collection[0]; // Sheet 1
-            
-            \Log::info('Sheet loaded successfully');
-            \Log::info('Total rows in sheet: ' . $sheet->count());
-            
-            // Log first few rows for debugging (be careful with sensitive data)
-            if ($sheet->count() > 0) {
-                \Log::info('First row (headers): ' . json_encode($sheet->first()->toArray()));
-                
-                if ($sheet->count() > 1) {
-                    \Log::info('Second row (sample data): ' . json_encode($sheet->skip(1)->first()->toArray()));
-                }
-            }
-            
-            return $sheet;
-            
-        } catch (\Exception $e) {
-            \Log::error('Error loading knowledge base: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
-            
-            // Return empty collection instead of throwing to prevent complete failure
-            return collect();
-        }
-    }
-
     public function index()
     {
         // Get all translations for both languages to pass to frontend
@@ -92,25 +45,12 @@ class ChatbotController extends Controller
     public function debugExcel()
     {
         try {
-            $path = storage_path('app/knowledge/KnowledgeBase.xlsx');
-            
-            if (!file_exists($path)) {
-                return response()->json(['error' => 'File not found: ' . $path]);
-            }
-            
-            $collection = Excel::toCollection(null, $path);
-            $sheet = $collection[0];
-            
-            // Get first 5 rows to understand structure
-            $sampleData = $sheet->take(5)->toArray();
+            $debugInfo = $this->knowledgeBaseService->debugStructure();
             
             return response()->json([
-                'file_path' => $path,
-                'file_exists' => file_exists($path),
-                'file_size' => filesize($path),
-                'total_rows' => $sheet->count(),
-                'sample_data' => $sampleData,
-                'first_row_keys' => array_keys($sheet->first()->toArray()),
+                'message' => 'Debug information for separate language sheets',
+                'debug_info' => $debugInfo,
+                'service_status' => 'KnowledgeBaseService is working with separate sheets'
             ]);
             
         } catch (\Exception $e) {
@@ -131,13 +71,8 @@ class ChatbotController extends Controller
             \Log::info('Request method: ' . $request->method());
             \Log::info('All query params: ', $request->query());
             
-            // Use your KnowledgeBaseService
-            $knowledgeBaseService = new KnowledgeBaseService(); // or inject it
-            $structuredData = $knowledgeBaseService->getStructuredData();
-            
-            \Log::info('Structured data loaded, categories: ' . count($structuredData));
-            
-            $categories = array_keys($structuredData);
+            // Use the service method instead of direct data access
+            $categories = $this->knowledgeBaseService->getCategories($lang);
             
             \Log::info('Found categories: ', $categories);
             
@@ -159,18 +94,17 @@ class ChatbotController extends Controller
         }
     }
 
-    public function getQuestionsByCategory(Request $request): JsonResponse
+    public function getQuestions(Request $request): JsonResponse
     {
         try {
             $category = $request->input('category');
             $lang = $request->input('lang', 'en');
             
-            \Log::info('=== DEBUG getQuestionsByCategory ===');
+            \Log::info('=== DEBUG getQuestions ===');
             \Log::info('Received category: "' . $category . '"');
             \Log::info('Received language: "' . $lang . '"');
             
-            $knowledgeBaseService = new KnowledgeBaseService();
-            $structuredData = $knowledgeBaseService->getStructuredData();
+            $structuredData = $this->knowledgeBaseService->getStructuredData();
             
             \Log::info('Available categories: ', array_keys($structuredData));
             
@@ -179,23 +113,27 @@ class ChatbotController extends Controller
                 return response()->json([
                     'questions' => [],
                     'subcategories' => [],
+                    'has_subcategories' => false,
+                    'has_direct_questions' => false,
                     'error' => 'Category not found'
                 ]);
             }
             
             $categoryData = $structuredData[$category];
             
-            // Extract direct questions for this category
+            // Extract direct questions for this category (filtered by language)
             $directQuestions = [];
             foreach ($categoryData['questions'] as $questionData) {
                 $question = $lang === 'bm' ? $questionData['question_bm'] : $questionData['question_en'];
-                if (!empty(trim($question))) {
+                $answer = $lang === 'bm' ? $questionData['answer_bm'] : $questionData['answer_en'];
+                
+                if (!empty(trim($question)) && !empty(trim($answer))) {
                     $directQuestions[] = trim($question);
                 }
             }
             
-            // Get subcategory names
-            $subcategories = array_keys($categoryData['subcategories']);
+            // Get filtered subcategories using the service method
+            $subcategories = $this->knowledgeBaseService->getSubcategories($category, $lang);
             
             \Log::info('Category analysis:', [
                 'category' => $category,
@@ -220,6 +158,8 @@ class ChatbotController extends Controller
             return response()->json([
                 'questions' => [],
                 'subcategories' => [],
+                'has_subcategories' => false,
+                'has_direct_questions' => false,
                 'error' => 'Failed to load questions: ' . $e->getMessage()
             ], 500);
         }
@@ -237,8 +177,7 @@ class ChatbotController extends Controller
             \Log::info('Subcategory: ' . $subcategory);
             \Log::info('Language: ' . $lang);
             
-            $knowledgeBaseService = new KnowledgeBaseService();
-            $structuredData = $knowledgeBaseService->getStructuredData();
+            $structuredData = $this->knowledgeBaseService->getStructuredData();
             
             if (!isset($structuredData[$category])) {
                 return response()->json([
@@ -296,12 +235,12 @@ class ChatbotController extends Controller
             \Log::info('Question: ' . $question);
             \Log::info('Language: ' . $lang);
             
-            $knowledgeBaseService = new KnowledgeBaseService();
-            $structuredData = $knowledgeBaseService->getStructuredData();
+            $structuredData = $this->knowledgeBaseService->getStructuredData();
             
             if (!isset($structuredData[$category])) {
                 return response()->json([
-                    'answer' => __('messages.no_answer_found', [], $lang), // ✅ Fixed: Pass language
+                    'answer' => __('messages.no_answer_found', [], $lang),
+                    'success' => false,
                     'error' => 'Category not found'
                 ]);
             }
@@ -354,7 +293,7 @@ class ChatbotController extends Controller
                 }
             }
             
-            // Add additional check for empty answers
+            // Check for empty answers
             if ($foundAnswer && trim($foundAnswer) !== '') {
                 \Log::info('Returning found answer: ' . substr($foundAnswer, 0, 100) . '...');
                 return response()->json([
@@ -367,7 +306,6 @@ class ChatbotController extends Controller
             \Log::info('No answer found, returning translated error message');
             \Log::info('Using language: ' . $lang);
             
-            // Test the translation
             $translatedMessage = __('messages.no_answer_found', [], $lang);
             \Log::info('Translated message: ' . $translatedMessage);
             
@@ -380,6 +318,7 @@ class ChatbotController extends Controller
             \Log::error('Error getting answer: ' . $e->getMessage());
             return response()->json([
                 'answer' => __('messages.error_searching', [], $lang), 
+                'success' => false,
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -395,9 +334,7 @@ class ChatbotController extends Controller
             \Log::info('Query: ' . $query);
             \Log::info('Language: ' . $lang);
             
-            // Use KnowledgeBaseService
-            $knowledgeBaseService = new KnowledgeBaseService(); 
-            $structuredData = $knowledgeBaseService->getStructuredData();
+            $structuredData = $this->knowledgeBaseService->getStructuredData();
             
             $results = [];
             
@@ -442,12 +379,11 @@ class ChatbotController extends Controller
                 }
             }
             
-            // Remove duplicates and sort by relevance (exact question matches first)
+            // Remove duplicates and sort by relevance
             $results = collect($results)->unique(function ($item) {
                 return $item['question'] . '|' . $item['answer'];
             })->sortBy(function ($item) use ($query) {
                 $questionLower = strtolower($item['question']);
-                // Exact matches first, then partial matches
                 if ($questionLower === $query) return 0;
                 if (Str::startsWith($questionLower, $query)) return 1;
                 return 2;
@@ -470,6 +406,7 @@ class ChatbotController extends Controller
             ], 500);
         }
     }
+
 
     public function getLiveAnswer(Request $request): JsonResponse
     {
@@ -531,7 +468,7 @@ class ChatbotController extends Controller
             \Log::error('🔥 Live answer error: ' . $e->getMessage());
 
             return response()->json([
-                'answer' => __('messages.error_searching'),
+                'answer' => __('messages.error_searching', [], $lang),
                 'success' => false
             ], 500);
         }

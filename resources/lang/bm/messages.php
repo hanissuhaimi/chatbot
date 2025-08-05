@@ -16,7 +16,8 @@ return [
     'selected_subcategory' => 'Anda telah memilih ":subcategory". Apakah soalan anda?',
     'general_questions' => 'Soalan Umum',
     'back_to_subcategories' => 'Kembali ke Subkategori',
-    'no_questions_in_subcategory' => 'No questions found in this subcategory.',
+    'no_questions_in_subcategory' => 'Tiada soalan dijumpai dalam subkategori ini.',
+    'no_questions_found' => 'Tiada soalan dijumpai dalam kategori ini.',
     'back_to_categories' => 'Kembali ke Kategori',
     'ask_different_question' => 'Tanya soalan lain',
     'searching_answer' => 'Saya sedang mencari jawapan untuk anda...',
@@ -31,4 +32,5 @@ return [
     'error_loading_categories' => "Maaf, saya tidak dapat memuatkan kategori. Sila cuba sebentar lagi.",
     'error_loading_questions' => "Maaf, saya menghadapi ralat semasa memuatkan soalan. Sila cuba lagi.",
     'error_searching' => 'Maaf, saya menghadapi ralat semasa mencari jawapan. Sila cuba lagi.',
+    'type_here' => 'Taip soalan anda di sini'
 ];
